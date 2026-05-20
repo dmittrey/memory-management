@@ -50,14 +50,19 @@ static void ensure_handlers_installed() {
 std::optional<uint8_t> safe_read_uint8(const uint8_t* p) {
   ensure_handlers_installed();
 
-  std::optional<uint8_t> result;
+  volatile uint8_t value = 0;
+  volatile bool ok = false;
   g_in_safe_read = 1;
 
   if (sigsetjmp(g_env, 1) == 0) {
     const volatile uint8_t* vp = p;
-    result = *vp;
+    value = *vp;
+    ok = true;
   }
 
   g_in_safe_read = 0;
-  return result;
+  if (ok) {
+    return static_cast<uint8_t>(value);
+  }
+  return std::nullopt;
 }
