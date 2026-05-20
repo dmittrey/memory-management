@@ -16,80 +16,45 @@
 # Результаты выполнения
 
 ```
-Mode: release
 --- initializations ---
-a: {null}
-b: {null}
-c: {unique=0, "hello"}
-d: {unique=0, "hello"}
+a: non-unique string: ""
+b: non-unique string: ""
+c: non-unique string: "hello"
+d: non-unique string: "hello"
 --- assignments ---
 before:
-  a: {null}
-  c: {unique=0, "hello"}
-  copy: {unique=0, "hello"}
-after c = "world": {unique=1, "world"}
+  a: non-unique string: ""
+  c: non-unique string: "hello"
+  copy: non-unique string: "hello"
+after c = "world": unique string: "world"
 after a = c:
-  a: {unique=0, "world"}
-  c: {unique=0, "world"}
-after c = SmartString("tmp"):
-  a: {unique=0, "world"}
-  c: {unique=1, "tmp"}
+  a: non-unique string: "world"
+  c: non-unique string: "world"
+after c = string_ptr("tmp"):
+  a: non-unique string: "world"
+  c: unique string: "tmp"
+Debug: deallocating memory for string: "tmp"
 --- bubble sort ---
 before:
-  [0] {unique=1, "delta"}
-  [1] {unique=1, "alpha"}
-  [2] {unique=1, "charlie"}
-  [3] {unique=1, "bravo"}
-  [4] {unique=1, "alpha"}
-  [5] {unique=1, "echo"}
+  [0] unique string: "delta"
+  [1] unique string: "alpha"
+  [2] unique string: "charlie"
+  [3] unique string: "bravo"
+  [4] unique string: "alpha"
+  [5] unique string: "echo"
 after:
-  [0] {unique=1, "alpha"}
-  [1] {unique=1, "alpha"}
-  [2] {unique=1, "bravo"}
-  [3] {unique=1, "charlie"}
-  [4] {unique=1, "delta"}
-  [5] {unique=1, "echo"}
----
-Mode: debug (release tracing enabled)
---- initializations ---
-a: {null}
-b: {null}
-c: {unique=0, "hello"}
-d: {unique=0, "hello"}
---- assignments ---
-before:
-  a: {null}
-  c: {unique=0, "hello"}
-  copy: {unique=0, "hello"}
-after c = "world": {unique=1, "world"}
-after a = c:
-  a: {unique=0, "world"}
-  c: {unique=0, "world"}
-after c = SmartString("tmp"):
-  a: {unique=0, "world"}
-  c: {unique=1, "tmp"}
---- bubble sort ---
-before:
-  [0] {unique=1, "delta"}
-  [1] {unique=1, "alpha"}
-  [2] {unique=1, "charlie"}
-  [3] {unique=1, "bravo"}
-  [4] {unique=1, "alpha"}
-  [5] {unique=1, "echo"}
-after:
-  [0] {unique=1, "alpha"}
-  [1] {unique=1, "alpha"}
-  [2] {unique=1, "bravo"}
-  [3] {unique=1, "charlie"}
-  [4] {unique=1, "delta"}
-  [5] {unique=1, "echo"}
-[trace] release "tmp" @ 0x168b6350
-[trace] release "alpha" @ 0x168b63c0
-[trace] release "alpha" @ 0x168b64d0
-[trace] release "bravo" @ 0x168b6450
-[trace] release "charlie" @ 0x168b6420
-[trace] release "delta" @ 0x168b6350
-[trace] release "echo" @ 0x168b63f0
+  [0] unique string: "alpha"
+  [1] unique string: "alpha"
+  [2] unique string: "bravo"
+  [3] unique string: "charlie"
+  [4] unique string: "delta"
+  [5] unique string: "echo"
+Debug: deallocating memory for string: "alpha"
+Debug: deallocating memory for string: "alpha"
+Debug: deallocating memory for string: "bravo"
+Debug: deallocating memory for string: "charlie"
+Debug: deallocating memory for string: "delta"
+Debug: deallocating memory for string: "echo"
 ```
 
 # Проверка в Linux-контейнере
