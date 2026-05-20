@@ -13,17 +13,15 @@
 namespace pool_registry {
 namespace {
 
-constexpr std::size_t kMaxPools = 64;
+constexpr int kMaxPools = 128;
 
 struct Entry {
-  const char* name;
-  const void* begin;
-  const void* end;
-  std::atomic<bool> valid{false};
+  std::atomic<const void*> guard_start{nullptr};
+  std::atomic<const void*> guard_end{nullptr};
 };
 
 std::array<Entry, kMaxPools> g_entries{};
-std::atomic<bool> g_handler_installed{false};
+struct sigaction g_prev_handler {};
 
 void write_cstr(int fd, const char* s) {
   if (s == nullptr) {
@@ -35,102 +33,117 @@ void write_cstr(int fd, const char* s) {
   }
 }
 
-void write_hex_ptr(int fd, const void* ptr) {
-  static const char kHex[] = "0123456789abcdef";
-  const auto value = reinterpret_cast<uintptr_t>(ptr);
-  char buf[2 + sizeof(uintptr_t) * 2 + 1];
-  buf[0] = '0';
-  buf[1] = 'x';
-  std::size_t pos = 2 + sizeof(uintptr_t) * 2;
-  buf[pos] = '\0';
-  for (std::size_t i = 0; i < sizeof(uintptr_t) * 2; ++i) {
-    const unsigned shift = static_cast<unsigned>((sizeof(uintptr_t) * 2 - 1 - i) * 4);
-    buf[2 + i] = kHex[(value >> shift) & 0xF];
+void write_int(int fd, int value) {
+  char buf[16];
+  int pos = 0;
+  if (value == 0) {
+    buf[pos++] = '0';
+  } else {
+    char digits[16];
+    int count = 0;
+    while (value > 0) {
+      digits[count++] = static_cast<char>('0' + value % 10);
+      value /= 10;
+    }
+    while (count > 0) {
+      buf[pos++] = digits[--count];
+    }
   }
-  (void)::write(fd, buf, pos);
+  (void)::write(fd, buf, static_cast<std::size_t>(pos));
 }
 
-const Entry* find_pool_by_address(const void* addr) {
-  const auto p = reinterpret_cast<const unsigned char*>(addr);
-  for (const Entry& entry : g_entries) {
-    if (!entry.valid.load(std::memory_order_acquire)) {
+int find_pool_id(const void* addr) {
+  const auto p = static_cast<const unsigned char*>(addr);
+  for (int i = 0; i < kMaxPools; ++i) {
+    const void* start =
+        g_entries[i].guard_start.load(std::memory_order_acquire);
+    if (start == nullptr) {
       continue;
     }
-    const auto begin = static_cast<const unsigned char*>(entry.begin);
-    const auto end = static_cast<const unsigned char*>(entry.end);
-    if (p >= begin && p < end) {
-      return &entry;
+    const void* end = g_entries[i].guard_end.load(std::memory_order_acquire);
+    const auto begin = static_cast<const unsigned char*>(start);
+    const auto guard_end = static_cast<const unsigned char*>(end);
+    if (p >= begin && p < guard_end) {
+      return i;
     }
   }
-  return nullptr;
+  return -1;
 }
 
-void segv_handler(int, siginfo_t* info, void*) {
-  const void* fault_addr = info != nullptr ? info->si_addr : nullptr;
-  const Entry* pool = find_pool_by_address(fault_addr);
-
-  write_cstr(STDERR_FILENO, "SIGSEGV: ");
-  if (pool != nullptr && pool->name != nullptr) {
-    write_cstr(STDERR_FILENO, "pool '");
-    write_cstr(STDERR_FILENO, pool->name);
-    write_cstr(STDERR_FILENO, "' overflow at ");
-  } else {
-    write_cstr(STDERR_FILENO, "unknown pool overflow at ");
+void dispatch_prev_handler(int sig, siginfo_t* info, void* ctx) {
+  if (g_prev_handler.sa_flags & SA_SIGINFO) {
+    g_prev_handler.sa_sigaction(sig, info, ctx);
+    return;
   }
-  write_hex_ptr(STDERR_FILENO, fault_addr);
-  write_cstr(STDERR_FILENO, "\n");
 
-  struct sigaction action {};
-  action.sa_handler = SIG_DFL;
-  sigemptyset(&action.sa_mask);
-  sigaction(SIGSEGV, &action, nullptr);
-  raise(SIGSEGV);
+  if (g_prev_handler.sa_handler == SIG_DFL) {
+    struct sigaction action {};
+    action.sa_handler = SIG_DFL;
+    sigemptyset(&action.sa_mask);
+    sigaction(sig, &action, nullptr);
+    raise(sig);
+    return;
+  }
+
+  if (g_prev_handler.sa_handler == SIG_IGN) {
+    return;
+  }
+
+  g_prev_handler.sa_handler(sig);
 }
+
+void segv_handler(int sig, siginfo_t* info, void* ctx) {
+  const void* fault_addr = info != nullptr ? info->si_addr : nullptr;
+  const int pool_id = find_pool_id(fault_addr);
+
+  if (pool_id != -1) {
+    write_cstr(STDERR_FILENO, "SIGSEGV: pool overflow, pool id = ");
+    write_int(STDERR_FILENO, pool_id);
+    write_cstr(STDERR_FILENO, "\n");
+    _exit(EXIT_FAILURE);
+  }
+
+  dispatch_prev_handler(sig, info, ctx);
+}
+
+struct HandlerInstaller {
+  HandlerInstaller() {
+    struct sigaction action {};
+    action.sa_flags = SA_SIGINFO;
+    action.sa_sigaction = segv_handler;
+    sigemptyset(&action.sa_mask);
+    if (sigaction(SIGSEGV, &action, &g_prev_handler) != 0) {
+      perror("sigaction(SIGSEGV)");
+      _exit(EXIT_FAILURE);
+    }
+  }
+};
+
+const HandlerInstaller g_installer{};
 
 }  // namespace
 
-void register_pool(const char* name, const void* begin, const void* end) {
-  for (Entry& entry : g_entries) {
-    bool expected = false;
-    if (entry.valid.compare_exchange_strong(expected, true,
-                                            std::memory_order_release)) {
-      entry.name = name;
-      entry.begin = begin;
-      entry.end = end;
-      return;
+int register_pool(const void* guard_start, const void* guard_end) {
+  for (int i = 0; i < kMaxPools; ++i) {
+    g_entries[i].guard_end.store(guard_end, std::memory_order_relaxed);
+    const void* expected = nullptr;
+    if (g_entries[i].guard_start.compare_exchange_strong(
+            expected, guard_start, std::memory_order_release,
+            std::memory_order_relaxed)) {
+      return i;
     }
   }
+
   const char msg[] = "pool_registry: registry full\n";
   (void)::write(STDERR_FILENO, msg, sizeof(msg) - 1);
   _exit(EXIT_FAILURE);
 }
 
-void unregister_pool(const void* begin) {
-  for (Entry& entry : g_entries) {
-    if (entry.valid.load(std::memory_order_acquire) && entry.begin == begin) {
-      entry.valid.store(false, std::memory_order_release);
-      entry.name = nullptr;
-      entry.begin = nullptr;
-      entry.end = nullptr;
-      return;
-    }
-  }
-}
-
-void install_segv_handler() {
-  bool expected = false;
-  if (!g_handler_installed.compare_exchange_strong(expected, true)) {
+void unregister_pool(int id) {
+  if (id < 0 || id >= kMaxPools) {
     return;
   }
-
-  struct sigaction action {};
-  action.sa_flags = SA_SIGINFO;
-  action.sa_sigaction = segv_handler;
-  sigemptyset(&action.sa_mask);
-  if (sigaction(SIGSEGV, &action, nullptr) != 0) {
-    perror("sigaction(SIGSEGV)");
-    _exit(EXIT_FAILURE);
-  }
+  g_entries[id].guard_start.store(nullptr, std::memory_order_release);
 }
 
 }  // namespace pool_registry

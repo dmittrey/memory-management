@@ -15,25 +15,25 @@
 # Результаты измерений
 
 ```
-Mode: default new/delete
-Time used: 38.151 sec
+Standard Allocator:
+Time used: 18.459 sec
 Memory used: 4.770 GB
-Overhead: 50.0%
+Overhead: 50.015%
 ---
-Mode: global mutex pool
-Time used: 59.612 sec
+Global mutexed pool:
+Time used: 14.664 sec
 Memory used: 2.386 GB
-Overhead:  0.1%
+Overhead: 0.057%
 ---
-Mode: global lock-free pool
-Time used: 73.975 sec
+Global lock-free pool:
+Time used: 22.215 sec
 Memory used: 2.386 GB
-Overhead:  0.1%
+Overhead: 0.059%
 ---
-Mode: thread-local pools
-Time used: 2.774 sec
-Memory used: 1.542 GB
-Overhead: 90.3%
+Thread-local pools:
+Time used: 1.274 sec
+Memory used: 1.541 GB
+Overhead: -54.669%
 ```
 
 # Проверка в Linux-контейнере

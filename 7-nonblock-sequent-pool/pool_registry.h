@@ -1,11 +1,8 @@
 #pragma once
 
-#include <cstddef>
-
 namespace pool_registry {
 
-void register_pool(const char* name, const void* begin, const void* end);
-void unregister_pool(const void* begin);
-void install_segv_handler();
+int register_pool(const void* guard_start, const void* guard_end);
+void unregister_pool(int id);
 
 }  // namespace pool_registry
