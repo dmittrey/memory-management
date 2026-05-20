@@ -14,13 +14,13 @@
 
 ```
 Mode: default new/delete
-Time used: 1048719 usec
-Memory used: 321171456 bytes
+Time used: 1.049 sec
+Memory used: 0.299 GB
 Overhead: 50.2%
 ---
 Mode: downward mmap pool
-Time used: 40106 usec
-Memory used: 161255424 bytes
+Time used: 0.040 sec
+Memory used: 0.150 GB
 Overhead:  0.8%
 ```
 

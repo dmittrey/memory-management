@@ -28,7 +28,7 @@ struct Node {
 static inline Node* create_list(unsigned n, Pool& pool) {
   Node* list = nullptr;
   for (unsigned i = 0; i < n; i++) {
-    void* memory = pool.allocate(sizeof(Node), alignof(Node));
+    void* memory = pool.allocate(sizeof(Node));
     list = new (memory) Node{list, i};
   }
   return list;
@@ -61,8 +61,10 @@ static inline void test(unsigned n) {
   get_usage(start);
 
 #ifdef USE_POOL_ALLOCATOR
-  Pool pool(n * sizeof(Node));
-  create_list(n, pool);
+  {
+    Pool pool(n * sizeof(Node), sizeof(Node));
+    create_list(n + 12345, pool);
+  }
 #else
   delete_list(create_list(n));
 #endif
@@ -71,14 +73,22 @@ static inline void test(unsigned n) {
 
   struct timeval diff;
   timersub(&finish.ru_utime, &start.ru_utime, &diff);
-  uint64_t time_used = diff.tv_sec * 1000000 + diff.tv_usec;
-  cout << "Time used: " << time_used << " usec\n";
+  const double time_used_sec =
+      static_cast<double>(diff.tv_sec) +
+      static_cast<double>(diff.tv_usec) / 1e6;
+  cout << "Time used: " << std::fixed << std::setprecision(3) << time_used_sec
+       << " sec\n";
 
-  uint64_t mem_used = (finish.ru_maxrss - start.ru_maxrss) * 1024;
-  cout << "Memory used: " << mem_used << " bytes\n";
+  const uint64_t mem_used_bytes =
+      (finish.ru_maxrss - start.ru_maxrss) * 1024;
+  const double mem_used_gb =
+      static_cast<double>(mem_used_bytes) / (1024.0 * 1024.0 * 1024.0);
+  cout << "Memory used: " << std::fixed << std::setprecision(3) << mem_used_gb
+       << " GB\n";
 
   auto mem_required = n * sizeof(Node);
-  auto overhead = (mem_used - mem_required) * double(100) / mem_used;
+  auto overhead =
+      (mem_used_bytes - mem_required) * double(100) / mem_used_bytes;
   cout << "Overhead: " << std::fixed << std::setw(4) << std::setprecision(1)
        << overhead << "%\n";
 }
