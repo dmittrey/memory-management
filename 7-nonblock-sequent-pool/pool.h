@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <mutex>
+#include <stdexcept>
 #include <unistd.h>
 
 #include <sys/mman.h>
@@ -17,35 +18,31 @@ class BasePool {
         mapping_size_(0),
         base_(nullptr),
         pool_id_(-1) {
+    if (capacity == 0) {
+      throw std::invalid_argument("capacity is zero!");
+    }
+    if (max_alloc_size == 0) {
+      throw std::invalid_argument("max alloc size is zero!");
+    }
+
     const std::size_t page_size =
         static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
     if (page_size == static_cast<std::size_t>(-1)) {
-      perror("sysconf(_SC_PAGESIZE)");
-      std::exit(EXIT_FAILURE);
+      throw std::runtime_error("unable to get _SC_PAGESIZE from system!");
     }
 
-    auto round_up = [page_size](std::size_t n) {
-      return (n + page_size - 1) & ~(page_size - 1);
-    };
-
-    std::size_t guard_size = round_up(max_alloc_size);
-    if (guard_size == 0) {
-      guard_size = page_size;
-    }
-
-    mapping_size_ = round_up(capacity) + guard_size;
+    const std::size_t guard_size = round_up(max_alloc_size, page_size);
+    mapping_size_ = round_up(capacity, page_size) + guard_size;
 
     mapping_ = mmap(nullptr, mapping_size_, PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANON, -1, 0);
     if (mapping_ == MAP_FAILED) {
-      perror("mmap");
-      std::exit(EXIT_FAILURE);
+      throw std::runtime_error("unable to allocate pool via MMAP!");
     }
 
     if (mprotect(mapping_, guard_size, PROT_NONE) != 0) {
-      perror("mprotect");
       munmap(mapping_, mapping_size_);
-      std::exit(EXIT_FAILURE);
+      throw std::runtime_error("unable to protect pool edge!");
     }
 
     base_ = static_cast<unsigned char*>(mapping_);
@@ -66,6 +63,10 @@ class BasePool {
   unsigned char* top() const { return base_ + mapping_size_; }
 
  private:
+  static std::size_t round_up(std::size_t value, std::size_t alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+  }
+
   void* mapping_;
   std::size_t mapping_size_;
   unsigned char* base_;

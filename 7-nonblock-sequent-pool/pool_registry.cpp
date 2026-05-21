@@ -143,7 +143,8 @@ void unregister_pool(int id) {
   if (id < 0 || id >= kMaxPools) {
     return;
   }
-  g_entries[id].guard_start.store(nullptr, std::memory_order_release);
+  // Deactivate slot so find_pool_id skips it and register_pool can reuse it.
+  g_entries[id].guard_start.store(nullptr);
 }
 
 }  // namespace pool_registry
