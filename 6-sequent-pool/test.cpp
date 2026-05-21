@@ -1,16 +1,38 @@
 #include <iomanip>
 #include <iostream>
 #include <new>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/resource.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #ifdef USE_POOL_ALLOCATOR
 #include "pool.h"
 #endif
 
 using namespace std;
+
+#ifdef USE_POOL_ALLOCATOR
+static void pool_overflow_handler(int, siginfo_t*, void*) {
+  const char message[] = "Pool overflow\n";
+  write(STDERR_FILENO, message, sizeof(message) - 1);
+  _exit(EXIT_FAILURE);
+}
+
+static void install_pool_overflow_handler() {
+  struct sigaction action {};
+  action.sa_sigaction = pool_overflow_handler;
+  action.sa_flags = SA_SIGINFO;
+  sigemptyset(&action.sa_mask);
+
+  if (sigaction(SIGSEGV, &action, nullptr) != 0) {
+    perror("Cannot install pool overflow handler");
+    exit(EXIT_FAILURE);
+  }
+}
+#endif
 
 static void get_usage(struct rusage& usage) {
   if (getrusage(RUSAGE_SELF, &usage)) {
@@ -63,7 +85,7 @@ static inline void test(unsigned n) {
 #ifdef USE_POOL_ALLOCATOR
   {
     Pool pool(n * sizeof(Node), sizeof(Node));
-    create_list(n + 12345, pool);
+    create_list(n, pool);
   }
 #else
   delete_list(create_list(n));
@@ -79,8 +101,11 @@ static inline void test(unsigned n) {
   cout << "Time used: " << std::fixed << std::setprecision(3) << time_used_sec
        << " sec\n";
 
-  const uint64_t mem_used_bytes =
-      (finish.ru_maxrss - start.ru_maxrss) * 1024;
+  #ifdef __APPLE__
+    const uint64_t mem_used_bytes = finish.ru_maxrss - start.ru_maxrss;
+  #else
+    const uint64_t mem_used_bytes = (finish.ru_maxrss - start.ru_maxrss) * 1024;
+  #endif
   const double mem_used_gb =
       static_cast<double>(mem_used_bytes) / (1024.0 * 1024.0 * 1024.0);
   cout << "Memory used: " << std::fixed << std::setprecision(3) << mem_used_gb
@@ -94,6 +119,10 @@ static inline void test(unsigned n) {
 }
 
 int main(const int argc, const char* argv[]) {
+#ifdef USE_POOL_ALLOCATOR
+  install_pool_overflow_handler();
+#endif
+
   test(10000000);
   return EXIT_SUCCESS;
 }
