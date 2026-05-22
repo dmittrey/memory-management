@@ -1,7 +1,6 @@
 #include <iomanip>
 #include <iostream>
 #include <new>
-#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/resource.h>
@@ -13,42 +12,6 @@
 #endif
 
 using namespace std;
-
-#ifdef USE_POOL_ALLOCATOR
-int find_pool_id(const void* addr) {
-  const Pool* pool = Pool::active_;
-  if (pool != nullptr && pool->contains_guard(addr)) {
-    return 0;
-  }
-  return -1;
-}
-
-static void pool_overflow_handler(int, siginfo_t*, void*) {
-  const void* fault_addr = info != nullptr ? info->si_addr : nullptr;
-  const int pool_id = find_pool_id(fault_addr);
-
-  if (pool_id != -1) {
-    write_cstr(STDERR_FILENO, "SIGSEGV: pool overflow, pool id = ");
-    write_int(STDERR_FILENO, pool_id);
-    write_cstr(STDERR_FILENO, "\n");
-    _exit(EXIT_FAILURE);
-  }
-
-  dispatch_prev_handler(sig, info, ctx);
-}
-
-static void install_pool_overflow_handler() {
-  struct sigaction action {};
-  action.sa_sigaction = pool_overflow_handler;
-  action.sa_flags = SA_SIGINFO;
-  sigemptyset(&action.sa_mask);
-
-  if (sigaction(SIGSEGV, &action, nullptr) != 0) {
-    perror("Cannot install pool overflow handler");
-    exit(EXIT_FAILURE);
-  }
-}
-#endif
 
 static void get_usage(struct rusage& usage) {
   if (getrusage(RUSAGE_SELF, &usage)) {
