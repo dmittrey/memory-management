@@ -6,6 +6,7 @@
 #include <cstring>
 #include <thread>
 #include <vector>
+#include <stdexcept>
 
 class ThreadPool {
  public:

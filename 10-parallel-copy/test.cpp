@@ -6,6 +6,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -38,7 +39,7 @@ int main() {
 
   if (posix_memalign(reinterpret_cast<void**>(&src), kAlignment, kCopySize) != 0 ||
       posix_memalign(reinterpret_cast<void**>(&dst), kAlignment, kCopySize) != 0) {
-        throw std::runtime_exception("Failed to allocate buffers");
+        throw std::runtime_error("Failed to allocate buffers");
   }
 
   fill_pattern(src, kCopySize);

@@ -7,11 +7,18 @@
 
 namespace {
 
+// Page size
+constexpr std::size_t kMinChunkPerWorker = 4096;
+
 std::unique_ptr<ThreadPool> g_pool;
 
 }  // namespace
 
 void init_parallel_copy_pool(std::size_t num_workers) {
+  if (num_workers == 0) {
+    g_pool.reset();
+    return;
+  }
   g_pool = std::make_unique<ThreadPool>(num_workers);
 }
 
@@ -26,13 +33,12 @@ void* parallel_memcpy(void* dst, const void* src, std::size_t size) {
 
   auto* dst_bytes = static_cast<unsigned char*>(dst);
   const auto* src_bytes = static_cast<const unsigned char*>(src);
-
-  if (g_pool == nullptr || g_pool->num_workers() == 0) {
+  const std::size_t num_workers = g_pool ? g_pool->num_workers() : 0;
+  if (num_workers == 0 || size < kMinChunkPerWorker * (num_workers + 1)) {
     std::memcpy(dst_bytes, src_bytes, size);
     return dst;
   }
 
-  const std::size_t num_workers = g_pool->num_workers();
   const std::size_t per_worker_chunk = size / (num_workers + 1);
   const std::size_t main_offset = num_workers * per_worker_chunk;
   const std::size_t main_chunk = size - main_offset;
