@@ -98,10 +98,6 @@ static inline void test(unsigned n) {
 }
 
 int main(const int argc, const char* argv[]) {
-#ifdef USE_POOL_ALLOCATOR
-  install_pool_overflow_handler();
-#endif
-
   test(10000000);
   return EXIT_SUCCESS;
 }
