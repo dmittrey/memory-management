@@ -14,6 +14,8 @@ namespace pool_registry {
 namespace {
 
 constexpr int kMaxPools = 128;
+const void* const kClaimSentinel =
+    reinterpret_cast<const void*>(uintptr_t(1));
 
 struct Entry {
   std::atomic<const void*> guard_start{nullptr};
@@ -57,10 +59,11 @@ int find_pool_id(const void* addr) {
   for (int i = 0; i < kMaxPools; ++i) {
     const void* start =
         g_entries[i].guard_start.load(std::memory_order_acquire);
-    if (start == nullptr) {
+    if (start == nullptr || start == kClaimSentinel) {
       continue;
     }
-    const void* end = g_entries[i].guard_end.load(std::memory_order_acquire);
+    const void* end =
+        g_entries[i].guard_end.load(std::memory_order_relaxed);
     const auto begin = static_cast<const unsigned char*>(start);
     const auto guard_end = static_cast<const unsigned char*>(end);
     if (p >= begin && p < guard_end) {
@@ -125,11 +128,12 @@ const HandlerInstaller g_installer{};
 
 int register_pool(const void* guard_start, const void* guard_end) {
   for (int i = 0; i < kMaxPools; ++i) {
-    g_entries[i].guard_end.store(guard_end, std::memory_order_relaxed);
     const void* expected = nullptr;
     if (g_entries[i].guard_start.compare_exchange_strong(
-            expected, guard_start, std::memory_order_release,
+            expected, kClaimSentinel, std::memory_order_relaxed,
             std::memory_order_relaxed)) {
+      g_entries[i].guard_end.store(guard_end, std::memory_order_relaxed);
+      g_entries[i].guard_start.store(guard_start, std::memory_order_release);
       return i;
     }
   }
@@ -144,7 +148,7 @@ void unregister_pool(int id) {
     return;
   }
   // Deactivate slot so find_pool_id skips it and register_pool can reuse it.
-  g_entries[id].guard_start.store(nullptr);
+  g_entries[id].guard_start.store(nullptr, std::memory_order_relaxed);
 }
 
 }  // namespace pool_registry

@@ -68,8 +68,13 @@ static void print_stats(struct rusage& start, struct rusage& finish, unsigned n)
   cout << "Time used: " << std::fixed << std::setprecision(3) << time_used_sec
        << " sec\n";
 
+#ifdef __APPLE__
+  const uint64_t mem_used =
+      static_cast<uint64_t>(finish.ru_maxrss - start.ru_maxrss);
+#else
   const uint64_t mem_used =
       static_cast<uint64_t>(finish.ru_maxrss - start.ru_maxrss) * 1024;
+#endif
   const double mem_used_gb =
       static_cast<double>(mem_used) / (1024.0 * 1024.0 * 1024.0);
   cout << "Memory used: " << std::fixed << std::setprecision(3) << mem_used_gb
